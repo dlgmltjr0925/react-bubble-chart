@@ -13,8 +13,13 @@ import {
   CIRCLE_COLOR_MIN,
   CIRCLE_MAX_RADIUS,
   CIRCLE_MIN_RADIUS,
+  GAP_BETWEEN_CIRCLES,
 } from './constants';
-import { getNextCirclePositions, getRadian } from './libs';
+import {
+  getIntersectionOfTwoCircles,
+  getRadian,
+  getRandomDegree,
+} from './libs';
 
 export interface Data {
   /**
@@ -160,20 +165,52 @@ export default function BubbleChart({
     });
 
     if (circles[1]) {
-      const r = circles[0].r + circles[1].r;
-      const degree = Math.random() * 360;
+      const r = circles[0].r + circles[1].r + GAP_BETWEEN_CIRCLES;
+      const degree = getRandomDegree();
       circles[1].x += r * Math.cos(getRadian(degree));
       circles[1].y -= r * Math.sin(getRadian(degree));
     }
 
-    for (let i = 2; i < 8; i++) {
-      const { x1, y1, x2, y2 } = getNextCirclePositions(
-        circles[0],
+    let ci = 0;
+    for (let i = 2; i < circles.length; i++) {
+      const { x1, y1, x2, y2 } = getIntersectionOfTwoCircles(
+        circles[ci],
         circles[i - 1],
-        circles[i].r
+        circles[i].r + GAP_BETWEEN_CIRCLES
       );
-      circles[i].x = x1;
-      circles[i].y = y1;
+
+      let isOverlab = false;
+      for (let j = i - 1; j >= 0; j--) {
+        const { x, y, r } = circles[j];
+        if ((x1 - x) ** 2 + (y1 - y) ** 2 < (circles[i].r + r) ** 2) {
+          isOverlab = true;
+          break;
+        }
+      }
+
+      if (!isOverlab) {
+        circles[i].x = x1;
+        circles[i].y = y1;
+        continue;
+      }
+
+      isOverlab = false;
+      for (let j = i - 1; j >= 0; j--) {
+        const { x, y, r } = circles[j];
+        if ((x2 - x) ** 2 + (y2 - y) ** 2 < (circles[i].r + r) ** 2) {
+          isOverlab = true;
+          break;
+        }
+      }
+
+      if (!isOverlab) {
+        circles[i].x = x2;
+        circles[i].y = y2;
+        continue;
+      }
+
+      if (++ci > i - 2) break;
+      i--;
     }
 
     return circles;
@@ -197,15 +234,26 @@ export default function BubbleChart({
       '2d'
     ) as CanvasRenderingContext2D;
 
+    let drawCount = 0;
+    let done = false;
+
     function draw() {
+      drawCount++;
       ctx.fillStyle = '#eee';
       ctx.clearRect(0, 0, width, height);
-      circles.slice(0, 8).forEach(({ x, y, color, r }) => {
+      circles.forEach(({ x, y, color, r, label }, i) => {
         ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
+        const radius = Math.max(Math.min(r, drawCount - i), 0);
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
         ctx.fillStyle = color;
         ctx.fill();
       });
+
+      const lastIndex = circles.length - 1;
+      const lastCircle = circles[lastIndex];
+      if (drawCount - lastIndex >= lastCircle.r) done = true;
+
+      if (!done) requestAnimationFrame(draw);
     }
 
     draw();
